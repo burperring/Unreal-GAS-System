@@ -2,14 +2,12 @@
 
 #include "SoulslikeGASCharacter.h"
 #include "Engine/LocalPlayer.h"
-#include "Camera/CameraComponent.h"
-#include "Components/CapsuleComponent.h"
-#include "GameFramework/CharacterMovementComponent.h"
-#include "GameFramework/SpringArmComponent.h"
-#include "GameFramework/Controller.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
+#include "AbilitySystemComponent.h"
+#include "Public/AttributeSet/SoulsAttributeSet.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
@@ -18,40 +16,67 @@ DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
 ASoulslikeGASCharacter::ASoulslikeGASCharacter()
 {
-	// Set size for collision capsule
-	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
-		
-	// Don't rotate when the controller rotates. Let that just affect the camera.
-	bUseControllerRotationPitch = false;
-	bUseControllerRotationYaw = false;
-	bUseControllerRotationRoll = false;
+	AbilitySystemComp = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("AbilitySystemComp"));
+	AbilitySystemComp->SetIsReplicated(true);
+	AbilitySystemComp->SetReplicationMode(EGameplayEffectReplicationMode::Minimal);
 
-	// Configure character movement
-	GetCharacterMovement()->bOrientRotationToMovement = true; // Character moves in the direction of input...	
-	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f); // ...at this rotation rate
+	Attributes = CreateDefaultSubobject<USoulsAttributeSet>(TEXT("Attributes"));
+}
 
-	// Note: For faster iteration times these variables, and many more, can be tweaked in the Character Blueprint
-	// instead of recompiling to adjust them
-	GetCharacterMovement()->JumpZVelocity = 700.f;
-	GetCharacterMovement()->AirControl = 0.35f;
-	GetCharacterMovement()->MaxWalkSpeed = 500.f;
-	GetCharacterMovement()->MinAnalogWalkSpeed = 20.f;
-	GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;
-	GetCharacterMovement()->BrakingDecelerationFalling = 1500.0f;
+UAbilitySystemComponent* ASoulslikeGASCharacter::GetAbilitySystemComponent() const
+{
+	return AbilitySystemComp;
+}
 
-	// Create a camera boom (pulls in towards the player if there is a collision)
-	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
-	CameraBoom->SetupAttachment(RootComponent);
-	CameraBoom->TargetArmLength = 400.0f; // The camera follows at this distance behind the character	
-	CameraBoom->bUsePawnControlRotation = true; // Rotate the arm based on the controller
+void ASoulslikeGASCharacter::PossessedBy(AController* NewController)
+{
+	Super::PossessedBy(NewController);
 
-	// Create a follow camera
-	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
-	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName); // Attach the camera to the end of the boom and let the boom adjust to match the controller orientation
-	FollowCamera->bUsePawnControlRotation = false; // Camera does not rotate relative to arm
+	if (AbilitySystemComp)
+	{
+		AbilitySystemComp->InitAbilityActorInfo(this, this);
+	}
 
-	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
-	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
+	InitializeAttributes();
+	GiveDefaultAbilities();
+}
+
+void ASoulslikeGASCharacter::OnRep_PlayerState()
+{
+	Super::OnRep_PlayerState();
+
+	if (AbilitySystemComp)
+	{
+		AbilitySystemComp->InitAbilityActorInfo(this, this);
+	}
+
+	InitializeAttributes();
+}
+
+void ASoulslikeGASCharacter::InitializeAttributes()
+{
+	if (AbilitySystemComp && DefaultAttributeEffect)
+	{
+		FGameplayEffectContextHandle EffectContext = AbilitySystemComp->MakeEffectContext();
+		EffectContext.AddSourceObject(this);
+		FGameplayEffectSpecHandle SpecHandle = AbilitySystemComp->MakeOutgoingSpec(DefaultAttributeEffect, 1, EffectContext);
+
+		if (SpecHandle.IsValid())
+		{
+			FActiveGameplayEffectHandle GEHandle = AbilitySystemComp->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+		}
+	}
+}
+
+void ASoulslikeGASCharacter::GiveDefaultAbilities()
+{
+	if (HasAuthority() && AbilitySystemComp)
+	{
+		for (TSubclassOf<UGameplayAbility>& StartupAbility : DefaultAbilities)
+		{
+			AbilitySystemComp->GiveAbility(FGameplayAbilitySpec(StartupAbility.GetDefaultObject(), 1, 0));
+		}
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -85,11 +110,30 @@ void ASoulslikeGASCharacter::SetupPlayerInputComponent(UInputComponent* PlayerIn
 
 		// Looking
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ASoulslikeGASCharacter::Look);
+
+		// Attack
+		EnhancedInputComponent->BindAction(AttackAction, ETriggerEvent::Triggered, this, &ASoulslikeGASCharacter::Attack);
+
+		// Block
+		EnhancedInputComponent->BindAction(BlockAction, ETriggerEvent::Triggered, this, &ASoulslikeGASCharacter::Block);
+		EnhancedInputComponent->BindAction(BlockAction, ETriggerEvent::Ongoing, this, &ASoulslikeGASCharacter::Block);
+		EnhancedInputComponent->BindAction(BlockAction, ETriggerEvent::Completed, this, &ASoulslikeGASCharacter::Block);
+
+		// Roll
+		EnhancedInputComponent->BindAction(BlockAction, ETriggerEvent::Triggered, this, &ASoulslikeGASCharacter::Roll);
 	}
 	else
 	{
 		UE_LOG(LogTemplateCharacter, Error, TEXT("'%s' Failed to find an Enhanced Input component! This template is built to use the Enhanced Input system. If you intend to use the legacy system, then you will need to update this C++ file."), *GetNameSafe(this));
 	}
+}
+
+bool ASoulslikeGASCharacter::IsAir()
+{
+	UCharacterMovementComponent* MovementComp = GetCharacterMovement();
+
+	bool isInAir = (MovementComp->MovementMode == EMovementMode::MOVE_Falling);
+	return isInAir;
 }
 
 void ASoulslikeGASCharacter::Move(const FInputActionValue& Value)
@@ -125,5 +169,29 @@ void ASoulslikeGASCharacter::Look(const FInputActionValue& Value)
 		// add yaw and pitch input to controller
 		AddControllerYawInput(LookAxisVector.X);
 		AddControllerPitchInput(LookAxisVector.Y);
+	}
+}
+
+void ASoulslikeGASCharacter::Attack(const FInputActionValue& Value)
+{
+	if (!IsAir())
+	{
+
+	}
+}
+
+void ASoulslikeGASCharacter::Block(const FInputActionValue& Value)
+{
+	if (!IsAir())
+	{
+
+	}
+}
+
+void ASoulslikeGASCharacter::Roll(const FInputActionValue& Value)
+{
+	if (!IsAir())
+	{
+
 	}
 }
