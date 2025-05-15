@@ -7,9 +7,11 @@
 #include "InputActionValue.h"
 #include "AbilitySystemComponent.h"
 #include "Public/AttributeSet/SoulsAttributeSet.h"
+#include "RPGPlayerState.h"
+#include "AbilitySystem/RPGAbilitySystemComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
-
-DEFINE_LOG_CATEGORY(LogTemplateCharacter);
+#include "DataAsset/CharacterClassInfoDataAsset.h"
+#include "Library/RPGAbilitySystemLibrary.h"
 
 //////////////////////////////////////////////////////////////////////////
 // ASoulslikeGASCharacter
@@ -23,60 +25,67 @@ ASoulslikeGASCharacter::ASoulslikeGASCharacter()
 	Attributes = CreateDefaultSubobject<USoulsAttributeSet>(TEXT("Attributes"));
 }
 
-UAbilitySystemComponent* ASoulslikeGASCharacter::GetAbilitySystemComponent() const
-{
-	return AbilitySystemComp;
-}
-
 void ASoulslikeGASCharacter::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
 
-	if (AbilitySystemComp)
+	if (HasAuthority())
 	{
-		AbilitySystemComp->InitAbilityActorInfo(this, this);
+		InitAbilityActorInfo();
 	}
-
-	InitializeAttributes();
-	GiveDefaultAbilities();
 }
 
 void ASoulslikeGASCharacter::OnRep_PlayerState()
 {
 	Super::OnRep_PlayerState();
 
-	if (AbilitySystemComp)
-	{
-		AbilitySystemComp->InitAbilityActorInfo(this, this);
-	}
-
-	InitializeAttributes();
+	InitAbilityActorInfo();
 }
 
-void ASoulslikeGASCharacter::InitializeAttributes()
+void ASoulslikeGASCharacter::InitAbilityActorInfo()
 {
-	if (AbilitySystemComp && DefaultAttributeEffect)
+	if (ARPGPlayerState* RPGPlayerState = GetPlayerState<ARPGPlayerState>())
 	{
-		FGameplayEffectContextHandle EffectContext = AbilitySystemComp->MakeEffectContext();
-		EffectContext.AddSourceObject(this);
-		FGameplayEffectSpecHandle SpecHandle = AbilitySystemComp->MakeOutgoingSpec(DefaultAttributeEffect, 1, EffectContext);
+		RPGAbilitySystemComp = RPGPlayerState->GetRPGAbilitySystemComponent();
+		RPGAttributes = RPGPlayerState->GetRPGAttributes();
 
-		if (SpecHandle.IsValid())
+		if (IsValid(RPGAbilitySystemComp))
 		{
-			FActiveGameplayEffectHandle GEHandle = AbilitySystemComp->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+			RPGAbilitySystemComp->InitAbilityActorInfo(RPGPlayerState, this);
+
+			if (HasAuthority())
+			{
+				InitClassDefaults();
+			}
 		}
 	}
 }
 
-void ASoulslikeGASCharacter::GiveDefaultAbilities()
+void ASoulslikeGASCharacter::InitClassDefaults()
 {
-	if (HasAuthority() && AbilitySystemComp)
+	if (!CharacterTag.IsValid())
 	{
-		for (TSubclassOf<UGameplayAbility>& StartupAbility : DefaultAbilities)
+		UE_LOG(LogTemp, Warning, TEXT("No Character Tag Selected In This Character %s"), *GetNameSafe(this));
+	}
+	else if (UCharacterClassInfoDataAsset* ClassInfo = URPGAbilitySystemLibrary::GetCharacterClassDefaultInfo(this))
+	{
+		if (const FCharacterClassDefaultInfo* SelectedClassInfo = ClassInfo->ClassDefaultInfoMap.Find(CharacterTag))
 		{
-			AbilitySystemComp->GiveAbility(FGameplayAbilitySpec(StartupAbility.GetDefaultObject(), 1, 0));
+			if (IsValid(RPGAbilitySystemComp))
+			{
+				RPGAbilitySystemComp->AddCharacterAbilities(SelectedClassInfo->StartingAbilities);
+				RPGAbilitySystemComp->AddCharacterPassiveAbilities(SelectedClassInfo->StartingPassives);
+				RPGAbilitySystemComp->InitializeDefaultAttributes(SelectedClassInfo->DefaultAttributes);
+			}
 		}
 	}
+}
+
+void ASoulslikeGASCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+
+
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -102,8 +111,8 @@ void ASoulslikeGASCharacter::SetupPlayerInputComponent(UInputComponent* PlayerIn
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
 		
 		// Jumping
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ASoulslikeGASCharacter::StartJump);
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ASoulslikeGASCharacter::StopJump);
 
 		// Moving
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ASoulslikeGASCharacter::Move);
@@ -124,7 +133,7 @@ void ASoulslikeGASCharacter::SetupPlayerInputComponent(UInputComponent* PlayerIn
 	}
 	else
 	{
-		UE_LOG(LogTemplateCharacter, Error, TEXT("'%s' Failed to find an Enhanced Input component! This template is built to use the Enhanced Input system. If you intend to use the legacy system, then you will need to update this C++ file."), *GetNameSafe(this));
+		UE_LOG(LogTemp, Error, TEXT("'%s' Failed to find an Enhanced Input component! This template is built to use the Enhanced Input system. If you intend to use the legacy system, then you will need to update this C++ file."), *GetNameSafe(this));
 	}
 }
 
@@ -134,6 +143,16 @@ bool ASoulslikeGASCharacter::IsAir()
 
 	bool isInAir = (MovementComp->MovementMode == EMovementMode::MOVE_Falling);
 	return isInAir;
+}
+
+void ASoulslikeGASCharacter::StartJump(const FInputActionValue& Value)
+{
+	
+}
+
+void ASoulslikeGASCharacter::StopJump(const FInputActionValue& Value)
+{
+
 }
 
 void ASoulslikeGASCharacter::Move(const FInputActionValue& Value)
@@ -176,7 +195,7 @@ void ASoulslikeGASCharacter::Attack(const FInputActionValue& Value)
 {
 	if (!IsAir())
 	{
-
+		
 	}
 }
 

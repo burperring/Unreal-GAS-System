@@ -11,16 +11,16 @@
 #include "Public/AttributeSet/SoulsAttributeSet.h"
 #include "SoulslikeGASCharacter.generated.h"
 
+class USoulsAttributeSet;
+class URPGAbilitySystemComponent;
 class USpringArmComponent;
 class UCameraComponent;
 class UInputMappingContext;
 class UInputAction;
 struct FInputActionValue;
 
-DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
-
 UCLASS(config=Game)
-class ASoulslikeGASCharacter : public ACharacter, public IAbilitySystemInterface
+class ASoulslikeGASCharacter : public ACharacter
 {
 	GENERATED_BODY()
 
@@ -58,24 +58,17 @@ class ASoulslikeGASCharacter : public ACharacter, public IAbilitySystemInterface
 public:
 	ASoulslikeGASCharacter();
 	
-	// overridden from IAbilitySystemInterface
-	UAbilitySystemComponent* GetAbilitySystemComponent() const override;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
-	int MaxHealth = 100;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
-	int MaxMana = 100;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
-	int MaxStamina = 100;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attributes")
-	int MaxStat = 99;
+	/* GAS System Setup */
+	virtual void PossessedBy(AController* NewController) override;
+	virtual void OnRep_PlayerState() override;
 
 protected:
 
 	bool IsAir();
+
+	/** Called for jump input */
+	void StartJump(const FInputActionValue& Value);
+	void StopJump(const FInputActionValue& Value);
 
 	/** Called for movement input */
 	void Move(const FInputActionValue& Value);
@@ -95,21 +88,28 @@ protected:
 
 protected:
 
+	virtual void BeginPlay() override;
+
 	virtual void NotifyControllerChanged() override;
 
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
+private:
+
+	/* GAS System */
+	UPROPERTY(BlueprintReadOnly, meta = (AllowPrivateAccess = true))
+	TObjectPtr<URPGAbilitySystemComponent> RPGAbilitySystemComp;
+
+	UPROPERTY(BlueprintReadOnly, meta = (AllowPrivateAccess = true))
+	TObjectPtr<USoulsAttributeSet> RPGAttributes;
+
+	UPROPERTY(EditAnywhere, Category = "CustomValue|CharacterInfo")
+	FGameplayTag CharacterTag;
+
+	void InitAbilityActorInfo();
+	void InitClassDefaults();
+
 public:
 
-	virtual void PossessedBy(AController* NewController) override;
-	virtual void OnRep_PlayerState() override;
-	virtual void InitializeAttributes();
-	virtual void GiveDefaultAbilities();
-
-	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, Category = "Abilities")
-	TSubclassOf<class UGameplayEffect> DefaultAttributeEffect;
-
-	UPROPERTY(BlueprintReadOnly, EditDefaultsOnly, Category = "Abilities")
-	TArray<TSubclassOf<class UGameplayAbility>> DefaultAbilities;
 };
 
