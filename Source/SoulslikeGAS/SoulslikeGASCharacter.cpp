@@ -12,6 +12,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "DataAsset/CharacterClassInfoDataAsset.h"
 #include "Library/RPGAbilitySystemLibrary.h"
+#include "Delegates/DelegateSignatureImpl.inl"
 
 //////////////////////////////////////////////////////////////////////////
 // ASoulslikeGASCharacter
@@ -42,6 +43,11 @@ void ASoulslikeGASCharacter::OnRep_PlayerState()
 	InitAbilityActorInfo();
 }
 
+UAbilitySystemComponent* ASoulslikeGASCharacter::GetAbilitySystemComponent() const
+{
+	return RPGAbilitySystemComp;
+}
+
 void ASoulslikeGASCharacter::InitAbilityActorInfo()
 {
 	if (ARPGPlayerState* RPGPlayerState = GetPlayerState<ARPGPlayerState>())
@@ -52,6 +58,7 @@ void ASoulslikeGASCharacter::InitAbilityActorInfo()
 		if (IsValid(RPGAbilitySystemComp))
 		{
 			RPGAbilitySystemComp->InitAbilityActorInfo(RPGPlayerState, this);
+			BindCallbacksToDependencies();
 
 			if (HasAuthority())
 			{
@@ -78,6 +85,33 @@ void ASoulslikeGASCharacter::InitClassDefaults()
 				RPGAbilitySystemComp->InitializeDefaultAttributes(SelectedClassInfo->DefaultAttributes);
 			}
 		}
+	}
+}
+
+void ASoulslikeGASCharacter::BindCallbacksToDependencies()
+{
+	if (IsValid(RPGAbilitySystemComp) && IsValid(RPGAttributes))
+	{
+		RPGAbilitySystemComp->GetGameplayAttributeValueChangeDelegate(RPGAttributes->GetHealthAttribute()).AddLambda(
+			[this](const FOnAttributeChangeData& Data) 
+			{
+				OnHealthChanged(Data.NewValue, RPGAttributes->GetMaxHealth());
+			});
+
+		RPGAbilitySystemComp->GetGameplayAttributeValueChangeDelegate(RPGAttributes->GetManaAttribute()).AddLambda(
+			[this](const FOnAttributeChangeData& Data) 
+			{
+				OnManaChanged(Data.NewValue, RPGAttributes->GetMaxMana());
+			});
+	}
+}
+
+void ASoulslikeGASCharacter::BroadcastInitialValues()
+{
+	if (IsValid(RPGAttributes))
+	{
+		OnHealthChanged(RPGAttributes->GetHealth(), RPGAttributes->GetMaxHealth());
+		OnManaChanged(RPGAttributes->GetMana(), RPGAttributes->GetMaxMana());
 	}
 }
 

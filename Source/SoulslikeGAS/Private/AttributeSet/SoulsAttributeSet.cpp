@@ -11,6 +11,8 @@ void USoulsAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 
 	DOREPLIFETIME_CONDITION_NOTIFY(USoulsAttributeSet, Health, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(USoulsAttributeSet, MaxHealth, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(USoulsAttributeSet, Mana, COND_None, REPNOTIFY_Always);
+	DOREPLIFETIME_CONDITION_NOTIFY(USoulsAttributeSet, MaxMana, COND_None, REPNOTIFY_Always);
 }
 
 void USoulsAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackData& Data)
@@ -20,6 +22,11 @@ void USoulsAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallb
 	if (Data.EvaluatedData.Attribute == GetHealthAttribute())
 	{
 		SetHealth(FMath::Clamp(GetHealth(), 0.0f, GetMaxHealth()));
+	}
+
+	if (Data.EvaluatedData.Attribute == GetManaAttribute())
+	{
+		SetMana(FMath::Clamp(GetMana(), 0.0f, GetMaxMana()));
 	}
 }
 
@@ -31,4 +38,14 @@ void USoulsAttributeSet::OnRep_Health(const FGameplayAttributeData& OldHealth)
 void USoulsAttributeSet::OnRep_MaxHealth(const FGameplayAttributeData& OldMaxHealth)
 {
 	GAMEPLAYATTRIBUTE_REPNOTIFY(USoulsAttributeSet, MaxHealth, OldMaxHealth);
+}
+
+void USoulsAttributeSet::OnRep_Mana(const FGameplayAttributeData& OldMana)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(USoulsAttributeSet, Mana, OldMana);
+}
+
+void USoulsAttributeSet::OnRep_MaxMana(const FGameplayAttributeData& OldMaxMana)
+{
+	GAMEPLAYATTRIBUTE_REPNOTIFY(USoulsAttributeSet, MaxMana, OldMaxMana);
 }

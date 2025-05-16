@@ -20,7 +20,7 @@ class UInputAction;
 struct FInputActionValue;
 
 UCLASS(config=Game)
-class ASoulslikeGASCharacter : public ACharacter
+class ASoulslikeGASCharacter : public ACharacter, public IAbilitySystemInterface
 {
 	GENERATED_BODY()
 
@@ -61,6 +61,14 @@ public:
 	/* GAS System Setup */
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void OnRep_PlayerState() override;
+
+	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+
+	UFUNCTION(BlueprintImplementableEvent)
+	void OnHealthChanged(float CurrentHealth, float MaxHealth);
+
+	UFUNCTION(BlueprintImplementableEvent)
+	void OnManaChanged(float CurrentMana, float MaxMana);
 
 protected:
 
@@ -108,6 +116,10 @@ private:
 
 	void InitAbilityActorInfo();
 	void InitClassDefaults();
+	void BindCallbacksToDependencies();
+
+	UFUNCTION(BlueprintCallable)
+	void BroadcastInitialValues();
 
 public:
 
