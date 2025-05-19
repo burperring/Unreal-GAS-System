@@ -7,7 +7,11 @@
 
 bool FPackagedInventory::NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuccess)
 {
-	return false;
+	SafeNetSerializeTArray_WithNetSerialize<100>(Ar, ItemTag, Map);
+	SafeNetSerializeTArray_Default<100>(Ar, ItemQuentities);
+
+	bOutSuccess = true;
+	return true;
 }
 
 
@@ -69,9 +73,22 @@ void UInventoryComponent::PackageInventory(FPackagedInventory& OutInventory)
 	}
 }
 
+void UInventoryComponent::ReconstructInventoryMap(const FPackagedInventory& Inventory)
+{
+	InventoryTagMap.Empty();
+
+	for (int32 i = 0; i < Inventory.ItemTag.Num(); i++)
+	{
+		InventoryTagMap.Emplace(Inventory.ItemTag[i], Inventory.ItemQuentities[i]);
+
+		GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Blue, FString::Printf(TEXT("Tag Added : %s // Quantity Added : %d"),
+			*Inventory.ItemTag[i].ToString(), Inventory.ItemQuentities[i]));
+	}
+}
+
 void UInventoryComponent::OnRep_CachedInventory()
 {
-
+	ReconstructInventoryMap(CachedInventory);
 }
 
 void UInventoryComponent::BeginPlay()

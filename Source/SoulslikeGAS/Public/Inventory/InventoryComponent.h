@@ -23,6 +23,16 @@ struct FPackagedInventory
 	virtual bool NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuccess);
 };
 
+template<>
+struct TStructOpsTypeTraits<FPackagedInventory> : TStructOpsTypeTraitsBase2<FPackagedInventory>
+{
+	enum
+	{
+		WithNetSerializer = true
+	};
+};
+
+
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class SOULSLIKEGAS_API UInventoryComponent : public UActorComponent
 {
@@ -54,6 +64,7 @@ private:
 	void ServerAddItem_Implementation(const FGameplayTag& ItemTag, int32 NumItems);
 
 	void PackageInventory(FPackagedInventory& OutInventory);
+	void ReconstructInventoryMap(const FPackagedInventory& Inventory);
 
 	UFUNCTION()
 	void OnRep_CachedInventory();
